@@ -8,6 +8,22 @@ import (
 	homework "github.com/bulatik205/homework-sdk-go"
 )
 
+var subjectAliases = map[string][]string{
+	"math":            {"математика", "матеша", "матеш", "матан", "алгебра"},
+	"geometry":        {"геометрия", "геом", "геома"},
+	"russian":         {"русский", "русский язык", "русс"},
+	"literature":      {"литература", "литра", "лит"},
+	"history":         {"история", "ист"},
+	"physics":         {"физика", "физра", "физ"},
+	"chemistry":       {"химия", "хим"},
+	"biology":         {"биология", "био"},
+	"geography":       {"география", "гео"},
+	"english":         {"английский", "английский язык", "англ", "инглиш"},
+	"social":          {"обществознание", "общество"},
+	"random-and-stat": {"вероятность и статистика", "вероятность", "статистика"},
+	"projects":        {"проектная деятельность", "проект", "проекты"},
+}
+
 func handleHomework(ctx context.Context, cfg Config, req Request, cmd string) Response {
 	loc := loadLocation(req.Meta.Timezone)
 
@@ -26,7 +42,7 @@ func handleHomework(ctx context.Context, cfg Config, req Request, cmd string) Re
 	}
 
 	label := dateLabel(cmd, date, loc)
-	return renderTasks(ctx, cfg, tasks, label, loc)
+	return renderTasks(ctx, cfg, tasks, label, loc, "date")
 }
 
 func handleBySubject(ctx context.Context, cfg Config, query string) Response {
@@ -48,7 +64,8 @@ func handleBySubject(ctx context.Context, cfg Config, query string) Response {
 		return simpleResp("По предмету " + matched.Display + " ничего не задали.")
 	}
 
-	return renderTasks(ctx, cfg, []homework.Task{*task}, "по предмету "+matched.Display, nil)
+	loc := time.Now().Location()
+	return renderTasks(ctx, cfg, []homework.Task{*task}, matched.Display, loc, "subject")
 }
 
 func handleButton(ctx context.Context, cfg Config, req Request) Response {
@@ -59,7 +76,7 @@ func handleButton(ctx context.Context, cfg Config, req Request) Response {
 		if err != nil {
 			return simpleResp(apiErrorText)
 		}
-		return renderTasks(ctx, cfg, tasks, d, loc)
+		return renderTasks(ctx, cfg, tasks, d, loc, "date")
 	}
 	if s, ok := req.Request.Payload["subject"].(string); ok {
 		task, err := cfg.HW.TaskBySubject(ctx, s)
@@ -69,13 +86,16 @@ func handleButton(ctx context.Context, cfg Config, req Request) Response {
 		if task == nil {
 			return simpleResp("По этому предмету ничего не задали.")
 		}
-		return renderTasks(ctx, cfg, []homework.Task{*task}, "по предмету "+s, nil)
+		return renderTasks(ctx, cfg, []homework.Task{*task}, s, loc, "subject")
 	}
 	return simpleResp("Не поняла, что показать.")
 }
 
-func renderTasks(ctx context.Context, cfg Config, tasks []homework.Task, label string, loc *time.Location) Response {
+func renderTasks(ctx context.Context, cfg Config, tasks []homework.Task, label string, loc *time.Location, kind string) Response {
 	if len(tasks) == 0 {
+		if kind == "subject" {
+			return simpleResp("По предмету " + label + " ничего не задали.")
+		}
 		return simpleResp("На " + label + " ничего не задали.")
 	}
 
@@ -100,8 +120,14 @@ func renderTasks(ctx context.Context, cfg Config, tasks []homework.Task, label s
 	if n > len(tasks) {
 		n = len(tasks)
 	}
+
 	var sb strings.Builder
-	sb.WriteString("На " + label + ": " + plural(tasksCount(len(tasks))) + ". ")
+	if kind == "subject" {
+		sb.WriteString("По предмету " + label + ": " + plural(len(tasks)) + ". ")
+	} else {
+		sb.WriteString("На " + label + ": " + plural(len(tasks)) + ". ")
+	}
+
 	for i := 0; i < n; i++ {
 		subj := display[tasks[i].Subject]
 		if subj == "" {
@@ -114,7 +140,7 @@ func renderTasks(ctx context.Context, cfg Config, tasks []homework.Task, label s
 	}
 
 	var buttons []Button
-	if loc != nil {
+	if loc != nil && kind == "date" {
 		buttons = []Button{
 			{Title: "На сегодня", Payload: map[string]any{"date": today(loc)}},
 			{Title: "На завтра", Payload: map[string]any{"date": tomorrow(loc)}},
@@ -141,12 +167,22 @@ func matchSubject(subjects []homework.Subject, query string) *homework.Subject {
 	if q == "" {
 		return nil
 	}
+
 	for i := range subjects {
 		d := strings.ToLower(subjects[i].Display)
 		if matchByStem(d, q) {
 			return &subjects[i]
 		}
 	}
+
+	for i := range subjects {
+		for _, alias := range subjectAliases[subjects[i].Code] {
+			if matchByStem(strings.ToLower(alias), q) {
+				return &subjects[i]
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -203,8 +239,6 @@ func today(loc *time.Location) string {
 func tomorrow(loc *time.Location) string {
 	return time.Now().In(loc).AddDate(0, 0, 1).Format("2006-01-02")
 }
-
-func tasksCount(n int) int { return n }
 
 func plural(n int) string {
 	mod10 := n % 10
