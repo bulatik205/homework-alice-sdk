@@ -16,6 +16,10 @@ func handleHomework(ctx context.Context, cfg Config, req Request, cmd string) Re
 	}
 
 	date := resolveDate(cmd, loc)
+	if !hasExplicitDate(cmd) {
+		date = tomorrow(loc)
+	}
+
 	tasks, err := cfg.HW.TasksByDate(ctx, date)
 	if err != nil {
 		return simpleResp(apiErrorText)

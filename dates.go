@@ -63,3 +63,13 @@ func parseExplicitDate(cmd string, now time.Time) (string, bool) {
 	}
 	return "", false
 }
+
+func hasExplicitDate(cmd string) bool {
+	if _, ok := parseExplicitDate(cmd, time.Now()); ok {
+		return true
+	}
+	return containsAny(cmd,
+		"сегодня", "завтра", "послезавтра", "вчера",
+		"понедельник", "вторник", "среду", "четверг", "пятниц", "суббот", "воскресень",
+	)
+}
