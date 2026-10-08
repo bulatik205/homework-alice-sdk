@@ -137,14 +137,25 @@ func subjectDisplays(ctx context.Context, cfg Config) map[string]string {
 }
 
 func matchSubject(subjects []homework.Subject, query string) *homework.Subject {
-	q := strings.ToLower(query)
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return nil
+	}
 	for i := range subjects {
 		d := strings.ToLower(subjects[i].Display)
-		if strings.Contains(d, q) || strings.Contains(q, d) {
+		if matchByStem(d, q) {
 			return &subjects[i]
 		}
 	}
 	return nil
+}
+
+func matchByStem(a, b string) bool {
+	const minLen = 4
+	if len(a) < minLen || len(b) < minLen {
+		return a == b
+	}
+	return a[:minLen] == b[:minLen]
 }
 
 func extractSubjectQuery(cmd string) string {
